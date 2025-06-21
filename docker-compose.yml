@@ -1,8 +1,31 @@
+version: '3.8'
+
 services:
   api:
-    build: ./api          # Uses api/Dockerfile
-    ports: - "8000:8000"
-    
-  dashboard:  
-    build: ./dashboard    # Uses dashboard/Dockerfile
-    ports: - "3000:3000"
+    build: ./api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app
+      - ./database:/app/database
+    environment:
+      - DATABASE_URL=sqlite:///./database/chatcards.db
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    depends_on:
+      - database
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+
+  database:
+    image: alpine:latest
+    volumes:
+      - ./database:/data
+    command: tail -f /dev/null
