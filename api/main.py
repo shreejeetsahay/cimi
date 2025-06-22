@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import json
+from datetime import datetime
 from dotenv import load_dotenv
 from app.services.chat_processing_service import ChatProcessingService
 from app.services.search_service import SearchService
@@ -36,7 +38,8 @@ class ChatSummarizeRequest(BaseModel):
     source_url: Optional[str] = ""
     platform: Optional[str] = ""
     tags: Optional[List[str]] = []
-    verbose: Optional[bool] = False  # Add verbose flag
+    project: Optional[str] = "General"  # Add project field with default
+    verbose: Optional[bool] = False
 
 
 @app.get("/")
@@ -54,6 +57,7 @@ async def summarize_chat(request: ChatSummarizeRequest):
             "source_url": request.source_url,
             "platform": request.platform,
             "tags": request.tags,
+            "project": request.project,  # Add user project
             "verbose": request.verbose,  # Pass verbose flag
         }
 
@@ -64,6 +68,67 @@ async def summarize_chat(request: ChatSummarizeRequest):
     except Exception as e:
         print(f"Error in summarize_chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing chat: {str(e)}")
+
+
+@app.get("/api/chats", response_model=List[ChatSummary])
+async def get_all_chats(limit: Optional[int] = 100, offset: Optional[int] = 0):
+    """Get all stored chats with pagination."""
+    try:
+        import sqlite3
+
+        with sqlite3.connect("chatcards.db") as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT id, title, synthesis, recap, project_name, 
+                       COALESCE(project, 'General') as project, tags, 
+                       source_url, platform, created_at
+                FROM chat_summaries 
+                ORDER BY created_at DESC 
+                LIMIT ? OFFSET ?
+            """,
+                (limit, offset),
+            )
+            rows = cursor.fetchall()
+
+            results = []
+            for row in rows:
+                results.append(
+                    ChatSummary(
+                        id=row["id"],
+                        title=row["title"],
+                        synthesis=row["synthesis"],
+                        recap=row["recap"],
+                        project_name=row["project_name"],
+                        project=row["project"],  # This will be 'General' if NULL
+                        tags=json.loads(row["tags"]),
+                        source_url=row["source_url"],
+                        platform=row["platform"],
+                        created_at=datetime.fromisoformat(row["created_at"]),
+                    )
+                )
+
+            return results
+
+    except Exception as e:
+        print(f"Error getting all chats: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching chats: {str(e)}")
+
+
+@app.get("/api/chats/count")
+async def get_chats_count():
+    """Get total count of stored chats."""
+    try:
+        import sqlite3
+
+        with sqlite3.connect("chatcards.db") as conn:
+            cursor = conn.execute("SELECT COUNT(*) as count FROM chat_summaries")
+            row = cursor.fetchone()
+            return {"count": row[0]}
+
+    except Exception as e:
+        print(f"Error getting chat count: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting count: {str(e)}")
 
 
 @app.post("/api/search", response_model=SearchResponse)
