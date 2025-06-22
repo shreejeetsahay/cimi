@@ -17,7 +17,7 @@ class ClaudeService:
         """Make a synchronous API call to Claude."""
         try:
             message = self.client.messages.create(
-                model="claude-3-7-sonnet-20250219",
+                model="claude-3-5-sonnet-20241022",
                 max_tokens=max_tokens,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -33,6 +33,7 @@ class ClaudeService:
         source_url = input_data.get("source_url", "")
         platform = input_data.get("platform", "")
         udf_tags = input_data.get("tags", [])  # Added default empty list
+        verbose = input_data.get("verbose", False)  # Add verbose flag
         highlights_text = "\n".join(f"- {h}" for h in highlights)
 
         prompt = f"""Extract and structure the key information from this content. Emphasize highlighted points.
@@ -42,14 +43,10 @@ HIGHLIGHTS (PRIORITY): {highlights_text}
 
 Instructions: Create a structured summary with markdown formatting. Present information directly without conversational references.
 
-Return JSON:
-{{
-   "title": "Concise descriptive title",
-   "synthesis": "2-3 sentence high-level summary", 
-   "recap": "Well-structured markdown content with headers, bullets, and bold formatting. Present information directly without conversational references.",
-   "suggested_project": "Most appropriate category (e.g. Current Events, Web Development, Team Planning, Personal Learning, Research, Work Discussion)",
-   "suggested_tags": ["3-5 relevant topic tags based on key themes and subjects discussed"]
-}}"""
+Return a single-line JSON object with no line breaks:
+{{"title": "Concise descriptive title", "synthesis": "2-3 sentence high-level summary", "recap": "Well-structured markdown content with headers, bullets, and bold formatting. Use \\n for line breaks.", "suggested_project": "Most appropriate category (e.g. Current Events, Web Development, Team Planning, Personal Learning, Research, Work Discussion)", "suggested_tags": ["3-5 relevant topic tags based on key themes and subjects discussed"]}}
+
+IMPORTANT: Return only valid JSON on a single line. Use \\n for line breaks within strings."""
 
         try:
             response = await asyncio.get_event_loop().run_in_executor(
@@ -60,22 +57,83 @@ Return JSON:
 
             # Clean and parse response
             response = response.strip()
+
+            # First check for code blocks
             json_match = re.search(
                 r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL
             )
             if json_match:
                 response = json_match.group(1)
 
-            # Try to parse as JSON directly if no code blocks found
+            # Clean and parse response
+            response = response.strip()
+            json_match = re.search(
+                r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL
+            )
+            if json_match:
+                response = json_match.group(1)
+
+            # Try to parse as JSON directly
             try:
                 parsed_response = json.loads(response)
-            except json.JSONDecodeError:
-                # If it's not wrapped in code blocks and not valid JSON, try to extract JSON
-                json_match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", response)
-                if json_match:
-                    parsed_response = json.loads(json_match.group(0))
-                else:
-                    raise ValueError("No valid JSON found in response")
+            except json.JSONDecodeError as e:
+                # Try cleaning the response more aggressively
+                try:
+                    # Remove extra whitespace and normalize the JSON
+                    # Replace literal newlines inside string values with \\n
+                    cleaned_response = re.sub(
+                        r'"\s*\n\s*"', '""', response
+                    )  # Remove empty lines
+                    cleaned_response = re.sub(
+                        r'(\w+)"\s*\n\s*,', r'\1",', cleaned_response
+                    )  # Fix trailing commas
+                    cleaned_response = re.sub(
+                        r",\s*\n\s*}", "\n}", cleaned_response
+                    )  # Fix closing braces
+
+                    parsed_response = json.loads(cleaned_response)
+                except json.JSONDecodeError:
+                    # Final fallback - manually extract the values
+                    print("Attempting manual extraction...")
+                    title = re.search(r'"title":\s*"([^"]*)"', response)
+                    synthesis = re.search(r'"synthesis":\s*"([^"]*)"', response)
+                    project = re.search(r'"suggested_project":\s*"([^"]*)"', response)
+
+                    # Extract recap content between quotes
+                    recap_match = re.search(
+                        r'"recap":\s*"(.*?)",\s*"suggested_project"',
+                        response,
+                        re.DOTALL,
+                    )
+                    recap_content = (
+                        recap_match.group(1) if recap_match else "Unable to parse recap"
+                    )
+
+                    # Extract tags array
+                    tags_match = re.search(
+                        r'"suggested_tags":\s*\[(.*?)\]', response, re.DOTALL
+                    )
+                    if tags_match:
+                        tags_str = tags_match.group(1)
+                        tags = [
+                            tag.strip().strip('"')
+                            for tag in tags_str.split(",")
+                            if tag.strip()
+                        ]
+                    else:
+                        tags = []
+
+                    parsed_response = {
+                        "title": title.group(1) if title else "Chat Summary",
+                        "synthesis": (
+                            synthesis.group(1)
+                            if synthesis
+                            else "Error parsing synthesis"
+                        ),
+                        "recap": recap_content.replace("\\n", "\n"),
+                        "suggested_project": project.group(1) if project else "General",
+                        "suggested_tags": tags,
+                    }
 
             # Fix: Extract suggested_tags from parsed_response and ensure type safety
             suggested_tags = parsed_response.get("suggested_tags", [])
