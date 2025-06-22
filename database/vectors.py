@@ -37,7 +37,7 @@ class Vectors:
         if self.pc.has_index(index_name):
             index = self.pc.Index(index_name)
             if filter:
-                results = index.query(vector=query_vector, top_k=no_of_results, namespace=namespace, filter=filter)
+                results = index.query(vector=query_vector, top_k=no_of_results, namespace=namespace, filter=filter, include_metadata = True, include_values = False)
             else:
                 results = index.query(
                     namespace=namespace,
