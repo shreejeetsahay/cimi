@@ -140,14 +140,26 @@ class PineconeService:
                 filter_dict["platform"] = request.platform_filter
 
             # Search using new API
-            search_results = self.index.search(
-                namespace=self.namespace,
-                query={
-                    "top_k": request.limit,
-                    "inputs": {"text": request.query},
-                    "filter": filter_dict if filter_dict else None,
-                },
-            )
+            if not filter_dict:
+                search_results = self.index.search(
+                    namespace=self.namespace,
+                    query={
+                        "top_k": request.limit,
+                        "inputs": {"text": request.query},
+                        # "filter": filter_dict if filter_dict else None,
+                    },
+                )
+            else:
+                search_results = self.index.search(
+                    namespace=self.namespace,
+                    query={
+                        "top_k": request.limit,
+                        "inputs": {"text": request.query},
+                        "filter": filter_dict
+                    },
+                )
+
+            
 
             # Convert results to our expected format
             matches = []
