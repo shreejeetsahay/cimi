@@ -1,4 +1,4 @@
-/* Floating "Save snippet" button */
+/* 1) Floating "Save snippet" button */
 #save-snippet-btn {
   padding: 4px 8px;
   background-color: #10a37f;
@@ -7,18 +7,18 @@
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   transition: background-color 0.2s ease;
 }
 #save-snippet-btn:hover {
   background-color: #0f8c6e;
 }
 
-/* Static top-right div */
+/* 2) Static badge */
 #chatcards-dedicated-div {
   position: fixed;
-  top: 12px;
-  right: 12px;
+  top: 24px;
+  right: 24px;
   background-color: #ffb000;
   color: #000;
   font-size: 14px;
@@ -30,7 +30,7 @@
   cursor: pointer;
 }
 
-/* Horizontal icon-only popup menu */
+/* 3) Horizontal icon menu */
 #chatcards-popup-menu {
   display: flex;
   flex-direction: row;
@@ -41,7 +41,6 @@
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
   padding: 4px;
 }
-
 #chatcards-popup-menu button {
   background: none;
   border: none;
@@ -53,7 +52,35 @@
   border-radius: 4px;
   transition: background-color 0.2s ease;
 }
-
 #chatcards-popup-menu button:hover {
   background-color: #f0f0f0;
 }
+
+/* Scroll-map bar */
+#chatcards-scrollbar {
+  position: fixed;
+  top: 0;
+  right: 8px;
+  width: 4px;
+  height: 100%;
+  background: rgba(0,0,0,0.1);
+  z-index: 10000;
+}
+
+/* Each dot */
+.chatcards-scroll-dot {
+  position: fixed;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10a37f;
+  cursor: pointer;
+  z-index: 10001;
+  transform: translateX(0);
+  transition: transform 0.1s ease;
+}
+.chatcards-scroll-dot:hover {
+  transform: scale(1.4);
+}
+

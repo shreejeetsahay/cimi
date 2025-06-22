@@ -1,44 +1,41 @@
 # api/app/models/chat.py
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional, List
 from datetime import datetime
 
 
-class Insight(BaseModel):
-    id: str
-    type: str  # "code", "knowledge", "solution", "guide"
-    content: Optional[str] = None  # Raw text for code
-    synthesis: Optional[str] = None  # Summary for knowledge
-    problem: Optional[str] = None  # Problem statement for solution
-    solution: Optional[str] = None  # Solution description
-    context: Optional[str] = None  # Context for solution (e.g., "MySQL")
-    title: Optional[str] = None  # Title for guide
-    steps: Optional[List[str]] = None  # Steps for guide
-    tools: Optional[List[str]] = None  # Tools for guide
-    language: Optional[str] = None  # Language for code
-    concepts: Optional[List[str]] = None  # Concepts for knowledge
-    tags: Optional[List[str]] = None  # User-provided or inferred tags
-    project: Optional[str] = None  # User-provided or inferred project
-    conversation_id: str
-    conversation_title: str
-    source_url: str
-    platform: str
-    created_at: datetime
-    embedding: Optional[List[float]] = None  # For Pinecone storage
+from pydantic import BaseModel
+from typing import Optional, List
+from datetime import datetime
 
 
-class ChatSynthesis(BaseModel):
-    # Unique ID for the chat session (UUID or from extension).
+class ChatSummary(BaseModel):
     id: str
-    # Short title for the chat (e.g., "React Debugging Session").
     title: str
-    # Brief chat summary (2-3 sentences).
-    summary: str
-    # List of insights (Code, Knowledge, Solution, Guide) for cards.
-    key_insights: List[Insight]
-    # URL of the chat (e.g., ChatGPT link).
+    synthesis: str
+    recap: str
+    project_name: str  # AI suggested project (from LLM)
+    project: str  # User specified project (new field)
+    tags: List[str] = []
     source_url: str
-    # Platform of the chat (e.g., "chatgpt", "claude").
     platform: str
-    # Timestamp when chat was processed (UTC).
     created_at: datetime
+
+    class Config:
+        # Allow datetime serialization
+        json_encoders = {datetime: lambda v: v.isoformat()}
+        # Example for API documentation
+        schema_extra = {
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "title": "Discussion about API Development",
+                "synthesis": "Team discussed implementing new API endpoints with focus on error handling and performance optimization.",
+                "recap": "# API Development Meeting\n\n## Key Points\n- Discussed error handling strategies\n- Performance optimization priorities\n- Timeline for implementation",
+                "project_name": "Web Development",  # AI suggested
+                "project": "ChatCards MVP",  # User specified
+                "tags": ["API", "Development", "Performance"],
+                "source_url": "https://example.com/chat/123",
+                "platform": "Slack",
+                "created_at": "2025-06-22T10:30:00",
+            }
+        }

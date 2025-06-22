@@ -1,17 +1,18 @@
-# api/main.py
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import json
+from datetime import datetime
 from dotenv import load_dotenv
-from app.services.claude_service import ClaudeService
-from app.models.chat import ChatSynthesis, Insight
-from database.vectors import Vectors
-from sentence_transformers import SentenceTransformer
+from app.services.chat_processing_service import ChatProcessingService
+from app.services.search_service import SearchService
+from app.models.chat import ChatSummary
+from app.models.search import SearchRequest, SearchResponse
 import uvicorn
-import uuid
 
+# Load environment variables
 load_dotenv()
 
 app = FastAPI(title="CIMI API", version="1.0.0")
@@ -26,243 +27,162 @@ app.add_middleware(
 )
 
 # Initialize services
-claude_service = ClaudeService()
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
-
-# Initialize Vectors service
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-if not PINECONE_API_KEY:
-    raise ValueError("PINECONE_API_KEY environment variable is required")
-
-vector_service = Vectors(api_key=PINECONE_API_KEY)
-
-# Configuration
-INDEX_NAME = "cimi-insights"
-NAMESPACE = "chat-insights"
-EMBEDDING_DIMENSION = 384  # all-MiniLM-L6-v2 dimension
-
-
-# Database initialization
-@app.on_event("startup")
-async def initialize_database():
-    """Initialize Pinecone index on startup if it doesn't exist."""
-    try:
-        vector_service.create_index(
-            index_name=INDEX_NAME,
-            dimension=EMBEDDING_DIMENSION,
-            metric="cosine",
-            vector_type="dense",
-            cloud={"name": "aws", "region": "us-east-1"},
-            deletion_protection="disabled",
-            tags={"environment": "development", "project": "cimi"},
-        )
-        print(f"✅ Pinecone index '{INDEX_NAME}' ready")
-    except Exception as e:
-        print(f"⚠️ Error initializing Pinecone index: {e}")
+chat_processing_service = ChatProcessingService()
+search_service = SearchService()
 
 
 # Request models
-class ChatProcessRequest(BaseModel):
+class ChatSummarizeRequest(BaseModel):
     chat_content: str
-    source_url: str
-    platform: str  # "chatgpt" or "claude"
-    project: Optional[str] = None
-    tags: Optional[List[str]] = None
-    conversation_id: Optional[str] = None
-
-
-class SearchRequest(BaseModel):
-    query: str
-    limit: Optional[int] = 10
-    project: Optional[str] = None
-    platform: Optional[str] = None
-
-
-class SearchResult(BaseModel):
-    id: str
-    type: str
-    title: str
-    summary: str
-    score: float
-    source_url: str
-    project: Optional[str]
-    conversation_id: str
-    conversation_title: str
+    highlights: Optional[List[str]] = []
+    source_url: Optional[str] = ""
+    platform: Optional[str] = ""
+    tags: Optional[List[str]] = []
+    project: Optional[str] = "General"  # Add project field with default
+    verbose: Optional[bool] = False
 
 
 @app.get("/")
 async def root():
-    return {"message": "ChatCards API is running"}
+    return {"message": "CIMI API is running"}
 
 
-@app.post("/api/process-chat", response_model=ChatSynthesis)
-async def process_chat(request: ChatProcessRequest):
-    """Process AI chat or highlighted text and extract insights."""
+@app.post("/api/summarize-chat", response_model=ChatSummary)
+async def summarize_chat(request: ChatSummarizeRequest):
+    """Process chat with LLM and store in database + Pinecone."""
     try:
-        # Process chat using Claude
-        synthesis = await claude_service.synthesize_chat(
-            chat_content=request.chat_content,
-            source_url=request.source_url,
-            platform=request.platform,
-            project=request.project,
-            tags=request.tags,
-            conversation_id=request.conversation_id,
-        )
+        input_data = {
+            "chat_content": request.chat_content,
+            "highlights": request.highlights,
+            "source_url": request.source_url,
+            "platform": request.platform,
+            "tags": request.tags,
+            "project": request.project,  # Add user project
+            "verbose": request.verbose,  # Pass verbose flag
+        }
 
-        # Prepare vectors for upsert
-        vectors_to_upsert = []
-
-        # Generate embeddings for each insight and prepare for Pinecone
-        for insight in synthesis.key_insights:
-            text_to_embed = (
-                insight.content
-                or insight.synthesis
-                or insight.solution
-                or " ".join(insight.steps or [])
-                or insight.title
-                or ""
-            )
-
-            # Generate embedding
-            embedding = embedder.encode(text_to_embed).tolist()
-            insight.embedding = embedding
-
-            # Create unique ID for this insight
-            insight_id = str(uuid.uuid4())
-
-            # Prepare metadata
-            metadata = {
-                "type": insight.type,
-                "title": insight.title,
-                "content": text_to_embed[:1000],  # Truncate for metadata
-                "source_url": request.source_url,
-                "platform": request.platform,
-                "project": request.project,
-                "conversation_id": request.conversation_id or "",
-                "conversation_title": synthesis.conversation_title,
-                "tags": request.tags or [],
-                "created_at": (
-                    synthesis.timestamp.isoformat() if synthesis.timestamp else ""
-                ),
-            }
-
-            # Add to vectors list
-            vectors_to_upsert.append(
-                {"id": insight_id, "values": embedding, "metadata": metadata}
-            )
-
-        # Upsert vectors to Pinecone
-        if vectors_to_upsert:
-            vector_service.upsert_vectors(
-                index_name=INDEX_NAME, namespace=NAMESPACE, vectors=vectors_to_upsert
-            )
-            print(f"✅ Upserted {len(vectors_to_upsert)} insights to Pinecone")
-
-        return synthesis
+        # Full pipeline: LLM → Database → Pinecone
+        summary = await chat_processing_service.process_and_store_chat(input_data)
+        return summary
 
     except Exception as e:
+        print(f"Error in summarize_chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing chat: {str(e)}")
 
 
-@app.get("/api/search", response_model=List[SearchResult])
-async def search_chats(
-    query: str,
-    limit: int = 10,
-    project: Optional[str] = None,
-    platform: Optional[str] = None,
-):
-    """Search insights using vector similarity."""
+@app.get("/api/chats", response_model=List[ChatSummary])
+async def get_all_chats(limit: Optional[int] = 100, offset: Optional[int] = 0):
+    """Get all stored chats with pagination."""
     try:
-        # Generate embedding for search query
-        query_embedding = embedder.encode(query).tolist()
+        import sqlite3
 
-        # Build filter if needed
-        search_filter = {}
-        if project:
-            search_filter["project"] = {"$eq": project}
-        if platform:
-            search_filter["platform"] = {"$eq": platform}
-
-        # Perform similarity search
-        results = vector_service.similarity_search(
-            index_name=INDEX_NAME,
-            namespace=NAMESPACE,
-            query_vector=query_embedding,
-            no_of_results=limit,
-            filter=search_filter if search_filter else None,
-        )
-
-        if results == -1:
-            raise HTTPException(status_code=404, detail="Index not found")
-
-        # Convert to SearchResult format
-        search_results = []
-        for match in results.get("matches", []):
-            metadata = match.get("metadata", {})
-            search_results.append(
-                SearchResult(
-                    id=match["id"],
-                    type=metadata.get("type", "insight"),
-                    title=metadata.get("title", "Untitled"),
-                    summary=metadata.get("content", "")[:200] + "...",
-                    score=match["score"],
-                    source_url=metadata.get("source_url", ""),
-                    project=metadata.get("project"),
-                    conversation_id=metadata.get("conversation_id", ""),
-                    conversation_title=metadata.get("conversation_title", ""),
-                )
+        with sqlite3.connect("chatcards.db") as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT id, title, synthesis, recap, project_name, 
+                       COALESCE(project, 'General') as project, tags, 
+                       source_url, platform, created_at
+                FROM chat_summaries 
+                ORDER BY created_at DESC 
+                LIMIT ? OFFSET ?
+            """,
+                (limit, offset),
             )
+            rows = cursor.fetchall()
 
-        return search_results
+            results = []
+            for row in rows:
+                results.append(
+                    ChatSummary(
+                        id=row["id"],
+                        title=row["title"],
+                        synthesis=row["synthesis"],
+                        recap=row["recap"],
+                        project_name=row["project_name"],
+                        project=row["project"],  # This will be 'General' if NULL
+                        tags=json.loads(row["tags"]),
+                        source_url=row["source_url"],
+                        platform=row["platform"],
+                        created_at=datetime.fromisoformat(row["created_at"]),
+                    )
+                )
+
+            return results
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error searching: {str(e)}")
+        print(f"Error getting all chats: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching chats: {str(e)}")
 
 
-@app.get("/api/chat/{chat_id}", response_model=ChatSynthesis)
-async def get_chat_details(chat_id: str):
-    """Get detailed chat information by ID."""
-    # This would require storing full chat synthesis objects
-    # For now, we can search by conversation_id
+@app.get("/api/chats/count")
+async def get_chats_count():
+    """Get total count of stored chats."""
     try:
-        results = vector_service.similarity_search(
-            index_name=INDEX_NAME,
-            namespace=NAMESPACE,
-            query_vector=[0.0] * EMBEDDING_DIMENSION,  # Dummy vector
-            no_of_results=100,
-            filter={"conversation_id": {"$eq": chat_id}},
-        )
+        import sqlite3
 
-        if not results or not results.get("matches"):
-            raise HTTPException(status_code=404, detail="Chat not found")
+        with sqlite3.connect("chatcards.db") as conn:
+            cursor = conn.execute("SELECT COUNT(*) as count FROM chat_summaries")
+            row = cursor.fetchone()
+            return {"count": row[0]}
 
-        # This is a simplified response - you might want to reconstruct the full ChatSynthesis
-        # or store it separately for complete retrieval
-        raise HTTPException(
-            status_code=501,
-            detail="Full chat retrieval needs additional implementation",
-        )
-
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving chat: {str(e)}")
+        print(f"Error getting chat count: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting count: {str(e)}")
+
+
+@app.post("/api/search", response_model=SearchResponse)
+async def search_chats(request: SearchRequest):
+    """Search through stored chat summaries."""
+    try:
+        results = search_service.search(request)
+        return results
+
+    except Exception as e:
+        print(f"Error in search endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error searching chats: {str(e)}")
+
+
+@app.get("/api/search-test")
+async def search_test():
+    """Simple test search endpoint."""
+    try:
+        test_request = SearchRequest(query="React", limit=5)
+        results = search_service.search(test_request)
+        return {"message": "Search working", "count": results.total_count}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/chat/{chat_id}", response_model=ChatSummary)
+async def get_chat(chat_id: str):
+    """Get a specific chat by ID."""
+    try:
+        chat = chat_processing_service.get_chat_by_id(chat_id)
+        return chat
+
+    except Exception as e:
+        print(f"Error getting chat {chat_id}: {str(e)}")
+        raise HTTPException(status_code=404, detail=f"Chat not found: {str(e)}")
+
+
+@app.get("/api/chat-exists")
+async def check_chat_exists(source_url: str):
+    """Check if a chat with this source URL already exists."""
+    try:
+        exists = chat_processing_service.chat_exists(source_url)
+        return {"exists": exists, "source_url": source_url}
+
+    except Exception as e:
+        print(f"Error checking chat existence: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error checking chat: {str(e)}")
 
 
 @app.get("/api/health")
 async def health_check():
-    """Check API and Pinecone connection health."""
-    try:
-        # Check if index exists
-        index_exists = vector_service.pc.has_index(INDEX_NAME)
-        return {
-            "status": "healthy",
-            "pinecone_connected": True,
-            "index_exists": index_exists,
-            "index_name": INDEX_NAME,
-        }
-    except Exception as e:
-        return {"status": "unhealthy", "error": str(e), "pinecone_connected": False}
+    """Check API health."""
+    return {"status": "healthy", "service": "chat-summarizer"}
 
 
 if __name__ == "__main__":
