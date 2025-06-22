@@ -28,9 +28,9 @@ class ClaudeService:
 
         # Heuristics for segmenting and feature detection
         segments = self._segment_content(chat_content)
-        # this is similiar to the rag approach of chunking. 
-        # may be unecessary, but also a splitting criteria makes so much sense. 
-        
+        # this is similiar to the rag approach of chunking.
+        # may be unecessary, but also a splitting criteria makes so much sense.
+
         insights = []
 
         # Process each segment
