@@ -5,10 +5,14 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 from dotenv import load_dotenv
+from app.services.claude_service import ClaudeService
+from app.models.chat import ChatSynthesis, Insight
+from sentence_transformers import SentenceTransformer
+import uvicorn
 
 load_dotenv()
 
-app = FastAPI(title="ChatCards API", version="1.0.0")
+app = FastAPI(title="CIMI API", version="1.0.0")
 
 # CORS middleware for Chrome extension
 app.add_middleware(
@@ -19,12 +23,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize services
+claude_service = ClaudeService()
+embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-# Request/Response models
+
+# Request models
 class ChatProcessRequest(BaseModel):
     chat_content: str
     source_url: str
     platform: str  # "chatgpt" or "claude"
+    project: Optional[str] = None
+    tags: Optional[List[str]] = None
+    conversation_id: Optional[str] = None
 
 
 class SearchRequest(BaseModel):
@@ -32,22 +43,16 @@ class SearchRequest(BaseModel):
     limit: Optional[int] = 10
 
 
-class ChatSynthesis(BaseModel):
-    id: str
-    title: str
-    summary: str
-    key_insights: List[str]
-    source_url: str
-    platform: str
-    created_at: str
-
-
 class SearchResult(BaseModel):
     id: str
+    type: str
     title: str
     summary: str
     score: float
     source_url: str
+    project: Optional[str]
+    conversation_id: str
+    conversation_title: str
 
 
 @app.get("/")
@@ -57,88 +62,55 @@ async def root():
 
 @app.post("/api/process-chat", response_model=ChatSynthesis)
 async def process_chat(request: ChatProcessRequest):
-    """Process AI chat and extract key insights"""
-    # TODO: Integrate with Claude API for synthesis
-    # TODO: Generate embeddings
-    # TODO: Store in database
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    """Process AI chat or highlighted text and extract insights."""
+    try:
+        # Process chat using Claude
+        synthesis = await claude_service.synthesize_chat(
+            chat_content=request.chat_content,
+            source_url=request.source_url,
+            platform=request.platform,
+            project=request.project,
+            tags=request.tags,
+            conversation_id=request.conversation_id,
+        )
+
+        # Generate embeddings for each insight
+        for insight in synthesis.key_insights:
+            text_to_embed = (
+                insight.content
+                or insight.synthesis
+                or insight.solution
+                or " ".join(insight.steps or [])
+                or insight.title
+                or ""
+            )
+            insight.embedding = embedder.encode(text_to_embed).tolist()
+
+        # Return synthesis for storage in Pinecone (handled by your friend)
+        return synthesis
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing chat: {str(e)}")
 
 
 @app.get("/api/search", response_model=List[SearchResult])
 async def search_chats(query: str, limit: int = 10):
-    """Search processed chats using vector similarity"""
-    # TODO: Implement vector search
-    # TODO: Return ranked results
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    """Search insights using vector similarity (placeholder for Pinecone)."""
+    # Placeholder: Your friend will implement Pinecone search
+    # For now, return mock results
+    raise HTTPException(
+        status_code=501, detail="Search not implemented yet (handled by Pinecone team)"
+    )
 
 
 @app.get("/api/chat/{chat_id}", response_model=ChatSynthesis)
 async def get_chat_details(chat_id: str):
-    """Get detailed chat information by ID"""
-    # TODO: Retrieve from database
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    """Get detailed chat information by ID (placeholder for Pinecone)."""
+    # Placeholder: Your friend will implement Pinecone retrieval
+    raise HTTPException(
+        status_code=501,
+        detail="Chat retrieval not implemented yet (handled by Pinecone team)",
+    )
 
 
 if __name__ == "__main__":
-    import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-# api/app/__init__.py
-# Empty file to make it a package
-
-# api/app/models/chat.py
-from pydantic import BaseModel
-from typing import List, Optional
-from datetime import datetime
-
-
-class Chat(BaseModel):
-    id: str
-    title: str
-    content: str
-    summary: str
-    key_insights: List[str]
-    source_url: str
-    platform: str
-    created_at: datetime
-    embedding: Optional[List[float]] = None
-
-
-# api/app/services/claude_service.py
-import anthropic
-import os
-from typing import List
-
-
-class ClaudeService:
-    def __init__(self):
-        self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-
-    async def synthesize_chat(self, chat_content: str) -> dict:
-        """Use Claude to extract key insights from chat content"""
-        prompt = f"""
-        Analyze this AI conversation and extract:
-        1. A clear, descriptive title (max 60 chars)
-        2. A brief summary (2-3 sentences)
-        3. Key insights/solutions/frameworks (bullet points)
-        
-        Chat content:
-        {chat_content}
-        
-        Return in JSON format:
-        {{
-            "title": "...",
-            "summary": "...",
-            "key_insights": ["...", "...", "..."]
-        }}
-        """
-
-        message = self.client.messages.create(
-            model="claude-3-sonnet-20240229",
-            max_tokens=1000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        # TODO: Parse JSON response and return structured data
-        return {"title": "", "summary": "", "key_insights": []}

@@ -1,0 +1,50 @@
+/* src/content.css */
+
+/* Style for the "Copy Full Chat" button injected into the header */
+#copy-full-chat-btn {
+  margin-left: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  background-color: #007bff;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: background-color 0.2s ease;
+}
+#copy-full-chat-btn:hover {
+  background-color: #0056b3;
+}
+
+/* Style for the "Save Highlight" bookmark button */
+.chatcards-bookmark-btn {
+  position: absolute !important;
+  background-color: #ffffff;
+  color: #007bff;
+  border: 1px solid #007bff;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  z-index: 10000;
+}
+.chatcards-bookmark-btn:hover {
+  background-color: #007bff;
+  color: #ffffff;
+}
+
+/* Highlight selection styling */
+::selection {
+  background: rgba(255, 255, 0, 0.4);
+}
+
+/* Highlighted chat snippet when scrolling to bookmark */
+[data-highlight-id] {
+  transition: background-color 0.5s;
+}
+[data-highlight-id].flash {
+  background-color: yellow;
+}
