@@ -32,7 +32,7 @@ class ClaudeService:
         highlights = input_data.get("highlights", [])
         source_url = input_data.get("source_url", "")
         platform = input_data.get("platform", "")
-        udf_tags = input_data.get("tags")
+        udf_tags = input_data.get("tags", [])  # Added default empty list
         highlights_text = "\n".join(f"- {h}" for h in highlights)
 
         prompt = f"""Extract and structure the key information from this content. Emphasize highlighted points.
@@ -77,13 +77,49 @@ Return JSON:
                 else:
                     raise ValueError("No valid JSON found in response")
 
+            # Fix: Extract suggested_tags from parsed_response and ensure type safety
+            suggested_tags = parsed_response.get("suggested_tags", [])
+
+            # Debug logging to identify the issue
+            print(f"udf_tags type: {type(udf_tags)}, value: {udf_tags}")
+            print(
+                f"suggested_tags type: {type(suggested_tags)}, value: {suggested_tags}"
+            )
+
+            # Ensure both are lists before concatenation
+            if not isinstance(udf_tags, list):
+                print(
+                    f"Warning: udf_tags is not a list, converting from {type(udf_tags)}"
+                )
+                udf_tags = (
+                    []
+                    if udf_tags is None
+                    else list(udf_tags) if hasattr(udf_tags, "__iter__") else []
+                )
+
+            if not isinstance(suggested_tags, list):
+                print(
+                    f"Warning: suggested_tags is not a list, converting from {type(suggested_tags)}"
+                )
+                suggested_tags = (
+                    []
+                    if suggested_tags is None
+                    else (
+                        list(suggested_tags)
+                        if hasattr(suggested_tags, "__iter__")
+                        else []
+                    )
+                )
+
+            combined_tags = udf_tags + suggested_tags
+
             return ChatSummary(
                 id=str(uuid4()),
                 title=parsed_response.get("title", "Chat Summary"),
                 synthesis=parsed_response.get("synthesis", ""),
                 recap=parsed_response.get("recap", ""),
                 project_name=parsed_response.get("suggested_project", "General"),
-                tags=list(set(udf_tags + parsed_response)),
+                tags=list(set(combined_tags)),  # Fixed line with type safety
                 source_url=source_url,
                 platform=platform,
                 created_at=datetime.utcnow(),
