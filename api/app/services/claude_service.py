@@ -28,6 +28,9 @@ class ClaudeService:
 
         # Heuristics for segmenting and feature detection
         segments = self._segment_content(chat_content)
+        # this is similiar to the rag approach of chunking. 
+        # may be unecessary, but also a splitting criteria makes so much sense. 
+        
         insights = []
 
         # Process each segment
@@ -129,7 +132,7 @@ class ClaudeService:
         Category:"""
 
         message = self.client.messages.create(
-            model="claude-3-sonnet-20240229",
+            model="claude-3-5-sonnet-latest",
             max_tokens=50,
             messages=[{"role": "user", "content": prompt}],
         )
@@ -164,14 +167,26 @@ class ClaudeService:
         ```"""
 
         message = self.client.messages.create(
-            model="claude-3-sonnet-20240229",
+            model="claude-3-5-sonnet-latest",
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}],
         )
-        # Parse JSON response (assuming Claude returns valid JSON)
-        import json
 
-        return json.loads(message.content[0].text)
+        # Extract JSON from response (Claude might wrap it in markdown)
+        response_text = message.content[0].text
+        try:
+            # Try to find JSON in the response
+            json_match = re.search(
+                r"```json\s*(\{.*?\})\s*```", response_text, re.DOTALL
+            )
+            if json_match:
+                return json.loads(json_match.group(1))
+            else:
+                # If no markdown wrapper, try parsing directly
+                return json.loads(response_text)
+        except json.JSONDecodeError:
+            # Fallback to empty dict if JSON parsing fails
+            return {}
 
     async def _infer_metadata(
         self, text: str, project: Optional[str], tags: Optional[List[str]]
@@ -194,11 +209,26 @@ class ClaudeService:
         ```"""
 
         message = self.client.messages.create(
-            model="claude-3-sonnet-20240229",
+            model="claude-3-5-sonnet-latest",
             max_tokens=200,
             messages=[{"role": "user", "content": prompt}],
         )
-        return json.loads(message.content[0].text)
+
+        response_text = message.content[0].text
+        try:
+            json_match = re.search(
+                r"```json\s*(\{.*?\})\s*```", response_text, re.DOTALL
+            )
+            if json_match:
+                return json.loads(json_match.group(1))
+            else:
+                return json.loads(response_text)
+        except json.JSONDecodeError:
+            return {
+                "project": "General",
+                "tags": [],
+                "conversation_title": "Chat Session",
+            }
 
     async def _generate_chat_metadata(self, chat_content: str) -> tuple:
         """Generate high-level chat title and summary."""
@@ -217,9 +247,20 @@ class ClaudeService:
         ```"""
 
         message = self.client.messages.create(
-            model="claude-3-sonnet-20240229",
+            model="claude-3-5-sonnet-latest",
             max_tokens=200,
             messages=[{"role": "user", "content": prompt}],
         )
-        result = json.loads(message.content[0].text)
-        return result["title"], result["summary"]
+
+        response_text = message.content[0].text
+        try:
+            json_match = re.search(
+                r"```json\s*(\{.*?\})\s*```", response_text, re.DOTALL
+            )
+            if json_match:
+                result = json.loads(json_match.group(1))
+            else:
+                result = json.loads(response_text)
+            return result["title"], result["summary"]
+        except json.JSONDecodeError:
+            return "Chat Session", "AI conversation analysis"
