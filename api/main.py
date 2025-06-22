@@ -6,7 +6,6 @@ from typing import List, Optional
 import os
 from dotenv import load_dotenv
 
-git
 load_dotenv()
 
 app = FastAPI(title="ChatCards API", version="1.0.0")
