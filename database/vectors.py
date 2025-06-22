@@ -54,3 +54,17 @@ class Vectors:
         else:
             print(f"Index {index_name} does not exist.")
             return -1 
+        
+    def get_vector_count(self, index_name, namespace):
+        if self.pc.has_index(index_name):
+            dense_index = self.pc.Index(index_name)
+            stats = dense_index.describe_index_stats()
+            namespace_data = stats['namespaces']
+            if namespace in namespace_data.keys():
+                return namespace_data[namespace]["vector_count"]
+            else:
+                print(f"Namespace {namespace} does not exist.")
+                return -1 
+        else:
+            print(f"Index {index_name} does not exist.")
+            return -1 
