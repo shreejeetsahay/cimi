@@ -1,50 +1,59 @@
-/* src/content.css */
-
-/* Style for the "Copy Full Chat" button injected into the header */
-#copy-full-chat-btn {
-  margin-left: 8px;
+/* Floating "Save snippet" button */
+#save-snippet-btn {
   padding: 4px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  background-color: #007bff;
-  color: #ffffff;
+  background-color: #10a37f;
+  color: #fff;
+  font-size: 13px;
   border: none;
   border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
   transition: background-color 0.2s ease;
 }
-#copy-full-chat-btn:hover {
-  background-color: #0056b3;
+#save-snippet-btn:hover {
+  background-color: #0f8c6e;
 }
 
-/* Style for the "Save Highlight" bookmark button */
-.chatcards-bookmark-btn {
-  position: absolute !important;
-  background-color: #ffffff;
-  color: #007bff;
-  border: 1px solid #007bff;
+/* Static top-right div */
+#chatcards-dedicated-div {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  background-color: #ffb000;
+  color: #000;
+  font-size: 14px;
+  padding: 6px 10px;
   border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 12px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease;
   z-index: 10000;
-}
-.chatcards-bookmark-btn:hover {
-  background-color: #007bff;
-  color: #ffffff;
-}
-
-/* Highlight selection styling */
-::selection {
-  background: rgba(255, 255, 0, 0.4);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  user-select: none;
+  cursor: pointer;
 }
 
-/* Highlighted chat snippet when scrolling to bookmark */
-[data-highlight-id] {
-  transition: background-color 0.5s;
+/* Horizontal icon-only popup menu */
+#chatcards-popup-menu {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  padding: 4px;
 }
-[data-highlight-id].flash {
-  background-color: yellow;
+
+#chatcards-popup-menu button {
+  background: none;
+  border: none;
+  padding: 8px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: #333;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+#chatcards-popup-menu button:hover {
+  background-color: #f0f0f0;
 }
