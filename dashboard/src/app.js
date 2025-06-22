@@ -102,7 +102,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>ChatCards</h1>
+        <h1>CIMI</h1>
         <p>Your AI conversation knowledge base</p>
       </header>
 
