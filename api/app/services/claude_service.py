@@ -33,6 +33,7 @@ class ClaudeService:
         source_url = input_data.get("source_url", "")
         platform = input_data.get("platform", "")
         udf_tags = input_data.get("tags", [])  # Added default empty list
+        project = input_data.get("project", "General")  # Add user project
         verbose = input_data.get("verbose", False)  # Add verbose flag
         highlights_text = "\n".join(f"- {h}" for h in highlights)
 
@@ -177,6 +178,7 @@ IMPORTANT: Return only valid JSON on a single line. Use \\n for line breaks with
                 synthesis=parsed_response.get("synthesis", ""),
                 recap=parsed_response.get("recap", ""),
                 project_name=parsed_response.get("suggested_project", "General"),
+                project=project,  # User specified project
                 tags=list(set(combined_tags)),  # Fixed line with type safety
                 source_url=source_url,
                 platform=platform,

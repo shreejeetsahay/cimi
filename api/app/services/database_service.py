@@ -15,6 +15,17 @@ class DatabaseService:
     def init_database(self):
         """Initialize SQLite database with chat summaries table."""
         with sqlite3.connect(self.db_path) as conn:
+            # First, check if we need to add the project column
+            cursor = conn.execute("PRAGMA table_info(chat_summaries)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if "project" not in columns:
+                # Add the project column to existing table
+                print("Adding 'project' column to existing chat_summaries table...")
+                conn.execute(
+                    "ALTER TABLE chat_summaries ADD COLUMN project TEXT DEFAULT 'General'"
+                )
+
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS chat_summaries (
@@ -22,7 +33,8 @@ class DatabaseService:
                     title TEXT NOT NULL,
                     synthesis TEXT NOT NULL,
                     recap TEXT NOT NULL,
-                    project_name TEXT NOT NULL,
+                    project_name TEXT NOT NULL,  -- AI suggested project
+                    project TEXT NOT NULL DEFAULT 'General',  -- User specified project
                     tags TEXT NOT NULL,  -- JSON array
                     source_url TEXT UNIQUE NOT NULL,
                     platform TEXT NOT NULL,
@@ -36,8 +48,11 @@ class DatabaseService:
                 "CREATE INDEX IF NOT EXISTS idx_title ON chat_summaries(title)"
             )
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_project ON chat_summaries(project_name)"
+                "CREATE INDEX IF NOT EXISTS idx_project_name ON chat_summaries(project_name)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_project ON chat_summaries(project)"
+            )  # New index
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_platform ON chat_summaries(platform)"
             )
@@ -60,8 +75,8 @@ class DatabaseService:
             conn.execute(
                 """
                 INSERT INTO chat_summaries 
-                (id, title, synthesis, recap, project_name, tags, source_url, platform, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, title, synthesis, recap, project_name, project, tags, source_url, platform, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     summary.id,
@@ -69,6 +84,7 @@ class DatabaseService:
                     summary.synthesis,
                     summary.recap,
                     summary.project_name,
+                    summary.project,  # Add user project
                     json.dumps(summary.tags),
                     summary.source_url,
                     summary.platform,
@@ -84,7 +100,7 @@ class DatabaseService:
 
         # Base search query
         base_query = """
-            SELECT id, title, synthesis, recap, project_name, tags, 
+            SELECT id, title, synthesis, recap, project_name, project, tags, 
                    source_url, platform, created_at
             FROM chat_summaries WHERE 1=1
         """
